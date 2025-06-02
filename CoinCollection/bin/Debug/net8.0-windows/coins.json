@@ -1,0 +1,29 @@
+[
+  {
+    "name": "1 \u0433\u0440\u0438\u0432\u043D\u044F",
+    "path": null,
+    "country": "\u0423\u043A\u0440\u0430\u0457\u043D\u0430",
+    "year": "1991",
+    "price": "200",
+    "metal": "\u0441\u0440\u0456\u0431\u043B\u043E",
+    "mintage": "10 000"
+  },
+  {
+    "name": "10 \u0433\u0440\u0438\u0432\u0435\u043D\u044C",
+    "path": null,
+    "country": "\u0423\u043A\u0440\u0430\u0457\u043D\u0430",
+    "year": "1992",
+    "price": "20",
+    "metal": "\u0441\u0442\u0430\u043B\u044C",
+    "mintage": "10 0000"
+  },
+  {
+    "name": "20",
+    "path": null,
+    "country": "USA",
+    "year": "1800",
+    "price": "500",
+    "metal": "silver",
+    "mintage": "100"
+  }
+]
