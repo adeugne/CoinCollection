@@ -1,0 +1,499 @@
+using CoinCollection.Managers;
+using CoinCollection.Models;
+using Microsoft.VisualBasic.ApplicationServices;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Drawing;
+using System.IO;
+using System.Reflection;
+using System.Text.Json;  
+using System.Windows.Forms;
+using System.Xml.Linq;
+using MyUser = CoinCollection.Models.User;
+
+namespace CoinCollection
+{
+
+    public partial class FormMain : Form
+    {
+        private string jsonFilePathUsers = "users.json";
+        private string jsonFilePathCoins = "coins.json";
+        private CoinsManager _coinsManager;
+        private UsersManager _usersManager;
+
+        private Own _own;
+        private MyUser _ownUser;
+        private string _coinPicturePath;
+
+        public FormMain()
+        {
+            InitializeComponent();
+
+            _coinsManager = new CoinsManager(jsonFilePathCoins);
+            _usersManager = new UsersManager(jsonFilePathUsers);
+
+            LoadDataAsync();
+        }
+
+        private async void LoadDataAsync()
+        {
+            await _coinsManager.LoadAsync();
+            await _usersManager.LoadAsync();
+
+            // Наприклад, оновлення списку монет на формі
+            UpdateCoinsList();
+            UpdateUsersList();
+
+            if (File.Exists("own.json"))
+            {
+                string json = await File.ReadAllTextAsync("own.json");
+                _own = JsonSerializer.Deserialize<Own>(json);
+
+                if (_own != null)
+                {
+                    // Знаходимо користувача за Uuid
+                    _ownUser = _usersManager.Users.FirstOrDefault(u => u.uuid == _own.Uuid);
+
+                    UpdateMainTab();
+                }
+            }
+        }
+
+        private void UpdateCoinsList()
+        {
+            dataGridViewCoins.Rows.Clear();
+            foreach (var coin in _coinsManager.Coins)
+            {
+                dataGridViewCoins.Rows.Add(coin.name, coin.path, coin.country, coin.year, coin.price, coin.metal, coin.mintage);
+            }
+        }
+
+        private void UpdateMainTab()
+        {
+            if (_ownUser != null)
+            {
+                label1OwnName.Text = "Вітаємо, " + _ownUser.name;
+                labelOwnEmail.Text = _ownUser.email;
+                labelOwnPhone.Text = _ownUser.phone;
+                labelOwnCountry.Text = _ownUser.country;
+
+                List<Coin> coins = new List<Coin>();
+
+                foreach (String uuid in _ownUser.coins)
+                {
+                    coins.Add(_coinsManager.GetCoin(uuid));
+
+                }
+
+                foreach (Coin c in coins)
+                {
+                    dataGridViewOwn.Rows.Add(c.name, c.path, c.country, c.year, c.price, c.metal, c.mintage);
+                }
+
+                //MessageBox.Show($"Завантажено власника: {_ownUser.name}");
+            }
+            else
+            {
+                MessageBox.Show("Власника не знайдено у списку користувачів.");
+            }
+        }
+
+        private void UpdateUsersList()
+        {
+            // Очищаємо старі дані
+            dataGridViewUser.Rows.Clear();
+
+            // Додаємо нові дані з UsersManager
+            foreach (var user in _usersManager.Users)
+            {
+                dataGridViewUser.Rows.Add(user.name, user.email, user.phone, user.country);
+            }
+        }
+
+
+
+        private void buttonUserAdd_Click(object sender, EventArgs e)
+        {
+            String name = textBoxUserName.Text;
+            String email = textBoxUserEmail.Text;
+            String phone = textBoxUserPhone.Text;
+            String country = textBoxUserCountry.Text;
+
+            if (name.Length == 0 || email.Length == 0 || phone.Length == 0 || country.Length == 0)
+            {
+                MessageBox.Show("Дані не можуть бути пустими!");
+                return;
+            }
+
+            var newUser = new MyUser
+            {
+                uuid = Guid.NewGuid().ToString(),
+                name = name,
+                country = country,
+                email = email,
+                phone = phone,
+                coins = new List<string>()
+            };
+            _usersManager.AddUser(newUser);
+            UpdateUsersList();
+        }
+
+        private void buttonUserRemove_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewUser.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Не виділено ні одного рядка!");
+                return;
+            }
+
+            foreach (DataGridViewRow row in dataGridViewUser.SelectedRows)
+            {
+                int index = row.Index;
+                if (index >= 0 && index < _usersManager.Users.Count)
+                {
+                    var user = _usersManager.Users[index];
+                    _usersManager.RemoveUser(user.uuid);
+                }
+            }
+
+
+            // Оновлюємо список у DataGridView
+            UpdateUsersList();
+
+            MessageBox.Show("Користувача(ів) видалено!");
+        }
+
+        private void buttonUserChange_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewUser.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Потрібно виділити всього один рядок!");
+                return;
+            }
+
+            String name = textBoxUserName.Text;
+            String email = textBoxUserEmail.Text;
+            String phone = textBoxUserPhone.Text;
+            String country = textBoxUserCountry.Text;
+
+            int r = dataGridViewUser.SelectedRows[0].Index;
+            Console.WriteLine(r);
+
+            dataGridViewUser.Rows[r].Cells[0].Value = name;
+            dataGridViewUser.Rows[r].Cells[1].Value = email;
+            dataGridViewUser.Rows[r].Cells[2].Value = phone;
+            dataGridViewUser.Rows[r].Cells[3].Value = country;
+            MessageBox.Show("Зміни успішно внесено!");
+        }
+
+        private async void button1_Click(object sender, EventArgs e)
+        {
+            await _usersManager.SaveAsync();
+            MessageBox.Show("Файл користувачів успішно збережено!");
+        }
+
+        private void buttonUserShow_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewUser.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Ви повинні вибрати один рядок!");
+                return;
+            }
+
+            int rind = dataGridViewUser.SelectedRows[0].Index;
+
+            CoinCollection.Models.User user = _usersManager.Users[rind];
+
+            Form form = new FormUser(user, _coinsManager);
+
+            form.ShowDialog();
+
+
+        }
+
+        private void pictureBoxCoin_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp";
+
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                string imagesDirectory = Path.Combine(appDirectory, "images");
+
+                // Створюємо папку images, якщо її ще немає
+                if (!Directory.Exists(imagesDirectory))
+                {
+                    Directory.CreateDirectory(imagesDirectory);
+                }
+
+                string fileName = Path.GetFileName(openFileDialog.FileName);
+                string relativePath = Path.Combine("images", fileName);
+
+                File.Copy(openFileDialog.FileName, relativePath, true);  // true перезапише, якщо вже існує
+
+                pictureBoxCoin.Image = Image.FromFile(relativePath);
+                _coinPicturePath = relativePath;
+            }
+        }
+
+
+        private void button1_Click_1(object sender, EventArgs e)
+        {
+
+
+            //додавання монети
+            String name = textBoxCoinName.Text;
+            String path = _coinPicturePath;
+            String country = textBoxCoinCountry.Text;
+            String year = textBoxCoinYear.Text;
+            String price = textBoxCoinPrice.Text;
+            String metal = textBoxCoinMetal.Text;
+            String mintage = textBoxCoinMintage.Text;
+
+            var newCoin = new Coin
+            {
+                uuid = Guid.NewGuid().ToString(),
+                name = name,
+                path = path,
+                country = country,
+                year = int.Parse(year),
+                price = decimal.Parse(price),
+                metal = metal,
+                mintage = long.Parse(mintage)
+            };
+            _coinsManager.AddCoin(newCoin);
+            UpdateCoinsList();
+
+        }
+
+        private void buttonCoinRemove_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewCoins.SelectedRows.Count == 1)
+            {
+                int index = dataGridViewCoins.SelectedRows[0].Index;
+                var coin = _coinsManager.Coins[index];
+                _coinsManager.RemoveCoin(coin.uuid);
+                UpdateCoinsList();
+            }
+            else
+            {
+                MessageBox.Show("Виберіть монету для видалення!");
+            }
+
+
+        }
+
+        private void buttonCoinView_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewCoins.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Потрібно виділити всього один рядок!");
+                return;
+            }
+
+            int index = dataGridViewCoins.SelectedRows[0].Index;
+            Coin selectedCoin = _coinsManager.Coins[index];
+
+            Form formCoins = new FormCoin(selectedCoin);
+
+            formCoins.ShowDialog();
+        }
+
+        private async void buttonCoinsSave_Click(object sender, EventArgs e)
+        {
+            await _coinsManager.SaveAsync();
+            MessageBox.Show("Файл монет успішно збережено!");
+        }
+
+        private void buttonUserChange_Click_1(object sender, EventArgs e)
+        {
+            if (dataGridViewUser.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Потрібно виділити один рядок для редагування!");
+                return;
+            }
+
+            int index = dataGridViewUser.SelectedRows[0].Index;
+
+            if (index < 0 || index >= _usersManager.Users.Count)
+            {
+                MessageBox.Show("Некоректний індекс користувача!");
+                return;
+            }
+
+            // Отримуємо користувача зі списку
+            var user = _usersManager.Users[index];
+
+            // Зчитуємо нові значення з текстових полів (або інших полів форми)
+            string newName = textBoxUserName.Text;
+            string newEmail = textBoxUserEmail.Text;
+            string newCountry = textBoxUserCountry.Text;
+            string newPhone = textBoxUserPhone.Text;
+
+            if (string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newCountry) || string.IsNullOrWhiteSpace(newPhone))
+            {
+                MessageBox.Show("Будь ласка, заповніть всі поля!");
+                return;
+            }
+
+            // Оновлюємо дані користувача
+            user.name = newName;
+            user.country = newCountry;
+            user.phone = newPhone;
+            user.email = newEmail;
+
+
+            // Оновлюємо відображення списку
+            UpdateUsersList();
+
+            MessageBox.Show("Користувача оновлено!");
+        }
+
+        private void buttonCoinChange_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewCoins.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Потрібно вибрати одну монету для редагування!");
+                return;
+            }
+
+            int index = dataGridViewCoins.SelectedRows[0].Index;
+
+            if (index < 0 || index >= _coinsManager.Coins.Count)
+            {
+                MessageBox.Show("Некоректний індекс монети!");
+                return;
+            }
+
+            // Отримуємо монету зі списку
+            var coin = _coinsManager.Coins[index];
+
+            // Зчитуємо нові значення з полів форми
+            string newName = textBoxCoinName.Text;
+            string newPath = pictureBoxCoin.Image?.Tag?.ToString() ?? coin.path;
+            string newCountry = textBoxCoinCountry.Text;
+            string yearText = textBoxCoinYear.Text;
+            string priceText = textBoxCoinPrice.Text;
+            string metal = textBoxCoinMetal.Text;
+            string mintageText = textBoxCoinMintage.Text;
+
+            if (string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newCountry) ||
+                string.IsNullOrWhiteSpace(yearText) || string.IsNullOrWhiteSpace(priceText) ||
+                string.IsNullOrWhiteSpace(metal) || string.IsNullOrWhiteSpace(mintageText))
+            {
+                MessageBox.Show("Будь ласка, заповніть всі поля!");
+                return;
+            }
+
+            if (!int.TryParse(yearText, out int newYear) ||
+                !decimal.TryParse(priceText, out decimal newPrice) ||
+                !long.TryParse(mintageText, out long newMintage))
+            {
+                MessageBox.Show("Некоректні числові значення!");
+                return;
+            }
+
+            // Оновлюємо дані монети
+            coin.name = newName;
+            coin.path = newPath;
+            coin.country = newCountry;
+            coin.year = newYear;
+            coin.price = newPrice;
+            coin.metal = metal;
+            coin.mintage = newMintage;
+
+
+            // Оновлюємо список монет у DataGridView
+            UpdateCoinsList();
+
+            MessageBox.Show("Дані монети успішно оновлено!");
+        }
+
+        private async void button2_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewUser.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Виберіть одного користувача для збереження!");
+                return;
+            }
+
+            int index = dataGridViewUser.SelectedRows[0].Index;
+            if (index < 0 || index >= _usersManager.Users.Count)
+            {
+                MessageBox.Show("Некоректний індекс користувача!");
+                return;
+            }
+
+            _ownUser = _usersManager.Users[index];
+
+            _own = new Own
+            {
+                Uuid = _ownUser.uuid,
+                Name = _ownUser.name
+            };
+
+            UpdateMainTab();
+
+            string json = JsonSerializer.Serialize(_own, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync("own.json", json);
+
+            MessageBox.Show("Користувача збережено в own.json!");
+        }
+
+        private void buttonCoinView2_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewOwn.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Потрібно вибрати хоч одну монету для перегляду!");
+                return;
+            }
+
+            int ind = dataGridViewOwn.SelectedRows[0].Index;
+
+            string uuid = _ownUser.coins[ind];
+
+            //знайти по uuid
+            Coin? selectedCoin = _coinsManager.GetCoin(uuid);
+
+            if (selectedCoin == null)
+            {
+                MessageBox.Show("Монету не знайдено.");
+                return;
+            }
+
+
+            Form formCoins = new FormCoin(selectedCoin);
+
+            formCoins.ShowDialog();
+        }
+
+        private void buttonUserAddCoins_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewUser.SelectedRows.Count != 1)
+            {
+                MessageBox.Show("Потрібно вибрати хоч одного користувача для перегляду!");
+                return;
+            }
+
+            //знайти індекс користувача за номером обраного рядка
+            int selectedIndex = dataGridViewUser.SelectedRows[0].Index;
+
+            var selectedUser = _usersManager.Users[selectedIndex];
+
+            // Створюємо і показуємо форму
+            var formSelect = new FormSelectCoin(_coinsManager.Coins, selectedUser.coins, _coinsManager);
+            if (formSelect.ShowDialog() == DialogResult.OK)
+            {
+                // Користувач вибрав монету
+                Coin selectedCoin = formSelect.SelectedCoin;
+                MessageBox.Show($"Ви вибрали монету: {selectedCoin.name} ({selectedCoin.uuid})");
+                selectedUser.coins.Add(selectedCoin.uuid);
+            }
+            else
+            {
+                MessageBox.Show("Вибір відмінено.");
+            }
+        }
+    }
+}
